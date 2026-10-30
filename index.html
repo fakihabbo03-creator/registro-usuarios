@@ -1,70 +1,105 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Registro de Usuário</title>
+
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
-      padding: 20px;
-      font-family: Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       background: #f4f6fa;
-      color: #222;
+      font-family: Arial, sans-serif;
+    }
+
+    main {
+      width: 100%;
+      max-width: 380px;
+      padding: 24px;
       text-align: center;
     }
-    main {
-      max-width: 440px;
-      margin: auto;
-    }
-    video {
-      width: 100%;
-      border-radius: 14px;
-      background: #111;
-      transform: scaleX(-1);
-    }
-    button {
-      display: block;
-      width: 100%;
-      padding: 16px;
-      margin-top: 12px;
+
+    #registrar {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 110px;
+      height: 110px;
       border: none;
-      border-radius: 10px;
+      border-radius: 50%;
       background: #1769e0;
       color: white;
-      font-size: 17px;
+      cursor: pointer;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
     }
-    button:disabled {
-      background: #999;
+
+    #registrar:disabled {
+      opacity: 0.55;
+      cursor: wait;
     }
+
+    #registrar svg {
+      width: 48px;
+      height: 48px;
+    }
+
     #status {
-      margin-top: 18px;
+      margin-top: 22px;
+      color: #555;
+      font-size: 14px;
       line-height: 1.5;
+      min-height: 42px;
+    }
+
+    video {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
     }
   </style>
 </head>
+
 <body>
   <main>
-    <h2>Registro de Usuário</h2>
-    <p>Posicione seu rosto na câmera.</p>
+    <button
+      id="registrar"
+      type="button"
+      onclick="registrar()"
+      aria-label="Capturar selfie e registrar localização"
+      title="Registrar"
+    >
+      <svg viewBox="0 0 24 24"
+           fill="none"
+           stroke="currentColor"
+           stroke-width="1.8"
+           stroke-linecap="round"
+           stroke-linejoin="round"
+           aria-hidden="true">
+        <path d="M14 4h-4L8 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+    </button>
+
+    <p id="status" role="status" aria-live="polite"></p>
 
     <video id="camera" autoplay playsinline muted></video>
 
-    <button id="iniciar" onclick="iniciarCamera()">
-      Ativar câmera
-    </button>
-
-    <button id="registrar" onclick="registrar()" disabled>
-      Tirar selfie e registrar
-    </button>
-
-    <p id="status">Aguardando ativação da câmera.</p>
-    <p>
-      Ao registrar, você autoriza o envio da selfie
-      e das coordenadas da sua localização.
-    </p>
-
-    <form id="formulario" method="POST" style="display:none">
+    <form
+      id="formulario"
+      method="POST"
+      style="display:none"
+    >
       <input type="hidden" name="foto" id="foto">
       <input type="hidden" name="latitude" id="latitude">
       <input type="hidden" name="longitude" id="longitude">
@@ -76,38 +111,25 @@
       "https://script.google.com/macros/s/AKfycbzD_5KAG9p15OjSej4FiUJbEXs0pUX5b4TLr9Wh3wX6ex4AEsV5KSGiFQfzBqyswE3Hpw/exec";
 
     const camera = document.getElementById("camera");
+    const botao = document.getElementById("registrar");
     const statusEl = document.getElementById("status");
-    const registrarBtn = document.getElementById("registrar");
+    const formulario = document.getElementById("formulario");
 
-    document.getElementById("formulario").action =
-      APPS_SCRIPT_URL;
-
-    async function iniciarCamera() {
-      try {
-        statusEl.textContent = "Solicitando câmera...";
-
-        const stream =
-          await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "user" },
-            audio: false
-          });
-
-        camera.srcObject = stream;
-        await camera.play();
-
-        registrarBtn.disabled = false;
-        statusEl.textContent = "Câmera pronta!";
-      } catch (erro) {
-        statusEl.textContent =
-          "Não foi possível acessar a câmera: " + erro.message;
-      }
-    }
+    formulario.action = APPS_SCRIPT_URL;
 
     function obterLocalizacao() {
       return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("Localização não disponível."));
+          return;
+        }
+
         navigator.geolocation.getCurrentPosition(
           posicao => resolve(posicao.coords),
-          reject,
+          erro => reject(
+            new Error("Não foi possível obter a localização: " +
+              erro.message)
+          ),
           {
             enableHighAccuracy: true,
             timeout: 20000,
@@ -117,17 +139,70 @@
       });
     }
 
+    function aguardarVideo(video) {
+      return new Promise((resolve, reject) => {
+        if (video.videoWidth && video.videoHeight) {
+          resolve();
+          return;
+        }
+
+        const timeout = setTimeout(() => {
+          reject(new Error("A câmera demorou para iniciar."));
+        }, 15000);
+
+        video.addEventListener("loadedmetadata", () => {
+          clearTimeout(timeout);
+          resolve();
+        }, { once: true });
+      });
+    }
+
     async function registrar() {
-      registrarBtn.disabled = true;
+      botao.disabled = true;
+      let stream = null;
 
       try {
-        statusEl.textContent = "Obtendo localização...";
+        statusEl.textContent = "Solicitando permissões...";
 
-        const local = await obterLocalizacao();
+        // Inicia as duas solicitações a partir do clique.
+        const localizacaoPromise = obterLocalizacao();
 
-        if (!camera.videoWidth) {
-          throw new Error("Câmera ainda não está pronta.");
+        const cameraPromise =
+          navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "user",
+              width: { ideal: 640 }
+            },
+            audio: false
+          });
+
+        // Evita rejeições não tratadas caso uma
+        // permissão seja recusada antes da outra.
+        const resultados = await Promise.allSettled([
+          localizacaoPromise,
+          cameraPromise
+        ]);
+
+        if (resultados[0].status === "rejected") {
+          if (resultados[1].status === "fulfilled") {
+            resultados[1].value.getTracks()
+              .forEach(track => track.stop());
+          }
+          throw resultados[0].reason;
         }
+
+        if (resultados[1].status === "rejected") {
+          throw resultados[1].reason;
+        }
+
+        const local = resultados[0].value;
+        stream = resultados[1].value;
+
+        statusEl.textContent = "Registrando...";
+
+        camera.srcObject = stream;
+        await camera.play();
+        await aguardarVideo(camera);
 
         const canvas = document.createElement("canvas");
 
@@ -138,28 +213,40 @@
 
         canvas.getContext("2d").drawImage(
           camera,
-          0, 0,
-          canvas.width, canvas.height
+          0,
+          0,
+          canvas.width,
+          canvas.height
         );
 
-        document.getElementById("foto").value =
-          canvas.toDataURL("image/jpeg", 0.7);
+        const foto = canvas.toDataURL("image/jpeg", 0.7);
 
+        document.getElementById("foto").value = foto;
         document.getElementById("latitude").value =
           local.latitude;
-
         document.getElementById("longitude").value =
           local.longitude;
 
-        statusEl.textContent =
-          "Enviando registro. Aguarde a página de confirmação...";
+        // Desliga a câmera imediatamente após capturar.
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+        camera.srcObject = null;
 
-        // Envia por navegação normal, sem fetch/CORS.
-        document.getElementById("formulario").submit();
+        statusEl.textContent = "Enviando registro...";
+
+        // Envia sem precisar de um segundo clique.
+        formulario.submit();
 
       } catch (erro) {
-        statusEl.textContent = "Erro: " + erro.message;
-        registrarBtn.disabled = false;
+        statusEl.textContent =
+          "Erro: " + (erro.message || "Não foi possível registrar.");
+
+        botao.disabled = false;
+
+      } finally {
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
       }
     }
   </script>
