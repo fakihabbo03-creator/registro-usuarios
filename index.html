@@ -1,0 +1,159 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registro de Usuário</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6fa;
+      text-align: center;
+      padding: 20px;
+      color: #222;
+    }
+    main {
+      max-width: 440px;
+      margin: auto;
+    }
+    video {
+      width: 100%;
+      border-radius: 14px;
+      background: #111;
+      transform: scaleX(-1);
+    }
+    button {
+      width: 100%;
+      padding: 15px;
+      margin-top: 12px;
+      border: 0;
+      border-radius: 10px;
+      background: #1769e0;
+      color: white;
+      font-size: 17px;
+      cursor: pointer;
+    }
+    button:disabled {
+      background: #999;
+    }
+    #status {
+      margin-top: 15px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h2>Registro de Usuário</h2>
+    <p>Posicione seu rosto na câmera.</p>
+
+    <video id="camera" autoplay playsinline muted></video>
+
+    <button id="iniciar" onclick="iniciarCamera()">
+      Ativar câmera
+    </button>
+
+    <button id="registrar" onclick="registrar()" disabled>
+      Tirar selfie e registrar
+    </button>
+
+    <p id="status">Aguardando ativação da câmera.</p>
+  </main>
+
+  <script>
+    const camera = document.getElementById("camera");
+    const statusEl = document.getElementById("status");
+    const registrarBtn = document.getElementById("registrar");
+
+    let stream = null;
+
+    async function iniciarCamera() {
+      try {
+        statusEl.textContent = "Solicitando acesso à câmera...";
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: false
+        });
+
+        camera.srcObject = stream;
+        await camera.play();
+
+        registrarBtn.disabled = false;
+        statusEl.textContent = "Câmera pronta!";
+      } catch (erro) {
+        statusEl.textContent = "Erro ao acessar câmera: " + erro.message;
+      }
+    }
+
+    function obterLocalizacao() {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          posicao => resolve({
+            latitude: posicao.coords.latitude,
+            longitude: posicao.coords.longitude
+          }),
+          reject,
+          {
+            enableHighAccuracy: true,
+            timeout: 20000,
+            maximumAge: 0
+          }
+        );
+      });
+    }
+
+    async function registrar() {
+      registrarBtn.disabled = true;
+
+      try {
+        statusEl.textContent = "Obtendo localização...";
+
+        const local = await obterLocalizacao();
+
+        if (!camera.videoWidth) {
+          throw new Error("A câmera ainda não está pronta.");
+        }
+
+        const canvas = document.createElement("canvas");
+        const largura = 640;
+        const escala = largura / camera.videoWidth;
+
+        canvas.width = largura;
+        canvas.height = Math.round(camera.videoHeight * escala);
+
+        canvas.getContext("2d").drawImage(
+          camera, 0, 0, canvas.width, canvas.height
+        );
+
+        const dados = {
+          foto: canvas.toDataURL("image/jpeg", 0.75),
+          latitude: local.latitude,
+          longitude: local.longitude
+        };
+
+        if (!window.opener) {
+          throw new Error(
+            "Abra esta página pelo sistema do Google Apps Script."
+          );
+        }
+
+        statusEl.textContent = "Enviando registro...";
+
+        // O endereço autorizado será configurado na próxima etapa.
+        const origemAppsScript = "ORIGEM_APPS_SCRIPT";
+
+        window.opener.postMessage(dados, origemAppsScript);
+
+        statusEl.textContent =
+          "Dados enviados. Aguarde a confirmação na página inicial.";
+
+      } catch (erro) {
+        statusEl.textContent = "Erro: " + erro.message;
+      } finally {
+        registrarBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
